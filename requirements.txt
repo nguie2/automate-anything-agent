@@ -35,6 +35,7 @@ python-json-logger==2.0.7
 # Data Processing
 pydantic==2.5.0
 pydantic-settings==2.1.0
+email-validator==2.1.0  # For email validation in Pydantic models
 
 # AWS SDK
 boto3==1.34.0
