@@ -1,0 +1,113 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: automation_agent
+      POSTGRES_USER: automation_user
+      POSTGRES_PASSWORD: automation_pass
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U automation_user -d automation_agent"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis (optional, for future caching/session management)
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Automation Agent API Server
+  automation-agent:
+    build: .
+    environment:
+      # Database
+      DATABASE_URL: postgresql://automation_user:automation_pass@postgres:5432/automation_agent
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: automation_agent
+      DATABASE_USER: automation_user
+      DATABASE_PASSWORD: automation_pass
+      
+      # Application
+      SECRET_KEY: your-super-secret-key-change-in-production-32-chars-minimum
+      DEBUG: "true"
+      LOG_LEVEL: INFO
+      LOG_FORMAT: console
+      
+      # Server
+      HOST: 0.0.0.0
+      PORT: 8000
+      
+      # OpenAI (you need to set this)
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-your_openai_api_key_here}
+      
+      # Slack OAuth2 (you need to set these)
+      SLACK_CLIENT_ID: ${SLACK_CLIENT_ID:-your_slack_client_id}
+      SLACK_CLIENT_SECRET: ${SLACK_CLIENT_SECRET:-your_slack_client_secret}
+      SLACK_REDIRECT_URI: http://localhost:8000/auth/slack/callback
+      
+      # Jira OAuth2 (you need to set these)
+      JIRA_CLIENT_ID: ${JIRA_CLIENT_ID:-your_jira_client_id}
+      JIRA_CLIENT_SECRET: ${JIRA_CLIENT_SECRET:-your_jira_client_secret}
+      JIRA_REDIRECT_URI: http://localhost:8000/auth/jira/callback
+      JIRA_BASE_URL: ${JIRA_BASE_URL:-https://your-domain.atlassian.net}
+      
+      # AWS Configuration (you need to set these)
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-your_aws_access_key}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-your_aws_secret_key}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_S3_BUCKET: ${AWS_S3_BUCKET:-your-s3-bucket-name}
+      
+      # GitHub OAuth2 (you need to set these)
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-your_github_client_id}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-your_github_client_secret}
+      GITHUB_REDIRECT_URI: http://localhost:8000/auth/github/callback
+    
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - .:/app
+      - /app/venv  # Exclude virtual environment
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Nginx (optional, for reverse proxy)
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - automation-agent
+    profiles:
+      - production
+
+volumes:
+  postgres_data:
+
+networks:
+  default:
+    name: automation-agent-network 
